@@ -279,7 +279,12 @@ async function fetchAllSubtitles(imdbId, type, season = null, episode = null, vi
 
     return response.data.subtitles;
   } catch (error) {
-    debugServer.error('Error fetching subtitles:', sanitizeForLogging(error.message));
+    debugServer.error('Error fetching subtitles:', sanitizeForLogging({
+      url: apiUrl,
+      code: error && error.code ? error.code : null,
+      status: error && error.response ? error.response.status : null,
+      message: error && error.message ? error.message : null
+    }));
     return null;
   }
 }
@@ -322,17 +327,23 @@ async function fetchAllSubtitlesWithFallback(
 ) {
   const normalizedVideoParams = normalizeVideoParams(videoParams);
   const hasVideoParams = Object.keys(normalizedVideoParams).length > 0;
+  if (!hasVideoParams) {
+    return fetchAllSubtitles(imdbId, type, season, episode, {});
+  }
 
-  const filtered = await fetchAllSubtitles(
+  const filteredPromise = fetchAllSubtitles(
     imdbId,
     type,
     season,
     episode,
     normalizedVideoParams
   );
+  const unfilteredPromise = fetchAllSubtitles(imdbId, type, season, episode, {});
 
-  if (!hasVideoParams || !filtered) {
-    return filtered;
+  const filtered = await filteredPromise;
+  if (!filtered) {
+    debugServer.warn('Filtered subtitle lookup returned no results; using unfiltered fallback');
+    return await unfilteredPromise;
   }
 
   const hasMain = hasLanguageSubtitles(filtered, mainLang);
@@ -342,10 +353,11 @@ async function fetchAllSubtitlesWithFallback(
   }
 
   debugServer.warn(
-    'Filtered subtitle lookup missed one requested language; retrying without video params'
+    `Filtered subtitle lookup missed requested language(s); ` +
+    `hasMain=${hasMain} hasTrans=${hasTrans}. Using unfiltered fallback`
   );
 
-  const unfiltered = await fetchAllSubtitles(imdbId, type, season, episode, {});
+  const unfiltered = await unfilteredPromise;
   return unfiltered || filtered;
 }
 
