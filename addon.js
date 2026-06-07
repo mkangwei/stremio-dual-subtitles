@@ -307,6 +307,48 @@ function filterSubtitlesByLanguage(allSubtitles, languageId) {
   }));
 }
 
+function hasLanguageSubtitles(allSubtitles, languageId) {
+  return Boolean(filterSubtitlesByLanguage(allSubtitles, languageId));
+}
+
+async function fetchAllSubtitlesWithFallback(
+  imdbId,
+  type,
+  season,
+  episode,
+  videoParams,
+  mainLang,
+  transLang
+) {
+  const normalizedVideoParams = normalizeVideoParams(videoParams);
+  const hasVideoParams = Object.keys(normalizedVideoParams).length > 0;
+
+  const filtered = await fetchAllSubtitles(
+    imdbId,
+    type,
+    season,
+    episode,
+    normalizedVideoParams
+  );
+
+  if (!hasVideoParams || !filtered) {
+    return filtered;
+  }
+
+  const hasMain = hasLanguageSubtitles(filtered, mainLang);
+  const hasTrans = hasLanguageSubtitles(filtered, transLang);
+  if (hasMain && hasTrans) {
+    return filtered;
+  }
+
+  debugServer.warn(
+    'Filtered subtitle lookup missed one requested language; retrying without video params'
+  );
+
+  const unfiltered = await fetchAllSubtitles(imdbId, type, season, episode, {});
+  return unfiltered || filtered;
+}
+
 /**
  * Fetch and decode subtitle content from URL.
  */
@@ -482,19 +524,6 @@ function joinSubtitleLines(text, langCode) {
   return text.replace(/\r?\n|\r/g, cjk ? '' : ' ').trim();
 }
 
-/** Escape text embedded in SRT HTML tags (avoid breaking markup / injection). */
-function htmlEncodeSrt(text) {
-  if (!text) return '';
-  return String(text)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
-/** Muted color for secondary line; players that ignore <font> still have <b> + › marker. */
-const DUAL_SUB_TRANS_COLOR = '#94a3b8';
-
 /**
  * Merge two subtitle arrays into one, aligning the secondary track to the
  * primary track's timebase before matching.
@@ -585,15 +614,12 @@ function mergeSubtitles(mainSubs, transSubs, options = {}) {
       }
       if (transParts.length > 0) {
         const cleanTransText = transParts.join(transJoiner);
-        const encMain = htmlEncodeSrt(cleanMainText);
-        const encTrans = htmlEncodeSrt(cleanTransText);
-        mergedText =
-          `<b>${encMain}</b>\n\u203a <i><font color="${DUAL_SUB_TRANS_COLOR}">${encTrans}</font></i>`;
+        mergedText = `${cleanMainText}\n> ${cleanTransText}`;
       }
     }
 
     if (mergedText === undefined) {
-      mergedText = `<b>${htmlEncodeSrt(cleanMainText)}</b>`;
+      mergedText = cleanMainText;
     }
 
     if (!mergedText) continue;
@@ -633,7 +659,7 @@ function formatSrt(subtitleArray) {
   if (!Array.isArray(subtitleArray)) return null;
 
   try {
-    return formatSrtSimple(subtitleArray);
+    return formatSrtSimple(subtitleArray).replace(/\n/g, '\r\n');
   } catch (error) {
     debugServer.error('Error formatting SRT:', sanitizeForLogging(error.message));
     return null;
@@ -814,7 +840,15 @@ async function subtitlesHandler({ type, id, extra, config }) {
 
     // Fetch all subtitles
     debugServer.log('Fetching subtitles from OpenSubtitles...');
-    const allSubtitles = await fetchAllSubtitles(imdbId, type, season, episode, videoParams);
+    const allSubtitles = await fetchAllSubtitlesWithFallback(
+      imdbId,
+      type,
+      season,
+      episode,
+      videoParams,
+      mainLang,
+      transLang
+    );
 
     if (!allSubtitles) {
       debugServer.warn('No subtitles found');
@@ -918,12 +952,14 @@ async function generateDynamicSubtitle(
   try {
     // Fetch all subtitles
     const normalizedVideoParams = normalizeVideoParams(videoParams);
-    const allSubtitles = await fetchAllSubtitles(
-      imdbId, 
-      type, 
-      season !== '0' ? season : null, 
+    const allSubtitles = await fetchAllSubtitlesWithFallback(
+      imdbId,
+      type,
+      season !== '0' ? season : null,
       episode !== '0' ? episode : null,
-      normalizedVideoParams
+      normalizedVideoParams,
+      mainLang,
+      transLang
     );
 
     if (!allSubtitles) {
@@ -999,6 +1035,7 @@ module.exports = {
   _test: {
     isRetryableFetchError,
     fetchWithRetry,
+    hasLanguageSubtitles,
     parseTimeToMs,
     parseSrt,
     parseSrtSimple,

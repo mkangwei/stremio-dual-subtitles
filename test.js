@@ -11,6 +11,7 @@ const {
   _test: {
     isRetryableFetchError,
     fetchWithRetry,
+    hasLanguageSubtitles,
     parseTimeToMs,
     parseSrt,
     parseSrtSimple,
@@ -73,6 +74,13 @@ test('HTTP 404 is not retryable', () => {
   assert.strictEqual(
     isRetryableFetchError({ response: { status: 404 }, message: 'not found' }),
     false
+  );
+});
+
+test('Chinese alias matching accepts zho for chi requests', () => {
+  assert.strictEqual(
+    hasLanguageSubtitles([{ id: '1', lang: 'zho' }], 'chi'),
+    true
   );
 });
 
@@ -328,7 +336,7 @@ test('Backward compat: numeric threshold still works', () => {
   assert.ok(result[0].text.includes('Hola'));
 });
 
-test('Dual merge distinguishes lines: bold primary, marker, colored secondary [Issue #9]', () => {
+test('Dual merge distinguishes lines with plain-text compatibility formatting', () => {
   const main = [
     { id: '1', startTime: '00:00:01,000', endTime: '00:00:04,000', text: 'Hello' }
   ];
@@ -337,12 +345,7 @@ test('Dual merge distinguishes lines: bold primary, marker, colored secondary [I
   ];
   const result = mergeSubtitles(main, trans, { mainLang: 'eng', transLang: 'spa' });
   assert.strictEqual(result.length, 1);
-  assert.ok(result[0].text.includes('<b>Hello</b>'), 'primary line should be bold');
-  assert.ok(result[0].text.includes('\u203a '), 'secondary line should include a visible marker');
-  assert.ok(
-    result[0].text.includes(`<font color="#94a3b8">`),
-    'secondary should use a muted color where the player supports it'
-  );
+  assert.strictEqual(result[0].text, 'Hello\n> Hola');
 });
 
 // ============================================================================
@@ -434,6 +437,7 @@ test('Parse then format roundtrip preserves content', () => {
   assert.ok(formatted.includes('Hello'));
   assert.ok(formatted.includes('World'));
   assert.ok(formatted.includes('00:00:01,000 --> 00:00:04,000'));
+  assert.ok(formatted.includes('\r\n'), 'formatted SRT should use CRLF line endings');
 });
 
 // ============================================================================
@@ -643,7 +647,7 @@ test('mergeSubtitles: emits all main cues even when trans is empty', () => {
   ];
   const merged = mergeSubtitles(main, [], { mainLang: 'eng', transLang: 'tur' });
   assert.strictEqual(merged.length, 1);
-  assert.ok(merged[0].text.includes('<b>alone</b>'));
+  assert.strictEqual(merged[0].text, 'alone');
 });
 
 // ============================================================================

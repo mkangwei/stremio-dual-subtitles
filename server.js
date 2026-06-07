@@ -272,7 +272,7 @@ app.get('/subtitles/:filename', (req, res) => {
   
   trackSubtitleServed();
   
-  res.setHeader('Content-Type', 'text/srt; charset=utf-8');
+  res.setHeader('Content-Type', 'application/x-subrip; charset=utf-8');
   res.setHeader('Cache-Control', 'public, max-age=21600');
   res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
   res.send(content);
@@ -306,7 +306,7 @@ app.get('/subs/:type/:imdbId/:season/:episode/:mainLang/:transLang/:mainSubId/:t
     
     trackSubtitleServed();
 
-    res.setHeader('Content-Type', 'text/srt; charset=utf-8');
+    res.setHeader('Content-Type', 'application/x-subrip; charset=utf-8');
     // s-maxage tells Vercel's edge to cache for 6h; stale-while-revalidate
     // lets a stale copy serve while we regenerate in the background.
     // The function only runs again every 6h per (URL, edge node), which
