@@ -488,7 +488,7 @@ A: Open an issue on [GitHub](https://github.com/ummugulsunn/stremio-dual-subtitl
 
 - Requires internet connection for subtitle fetching
 - Dependent on OpenSubtitles availability
-- Serverless (Vercel) has 10-second timeout limit
+- Serverless deployments still depend on upstream subtitle latency and availability
 - In-memory cache doesn't persist across serverless invocations
 
 ---

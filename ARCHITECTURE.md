@@ -193,8 +193,9 @@ See [SECURITY.md](SECURITY.md) for the full disclosure policy.
 ### Vercel (production)
 
 - A single Vercel serverless function serves every route via `vercel.json`.
-- Function timeout is capped at 10 s on the hobby tier, so every upstream
-  call uses `fetchWithRetry` with an explicit `timeout`.
+- The deployment sets `maxDuration` in `vercel.json`, and upstream calls
+  still use explicit axios timeouts plus retry handling for transient
+  timeout/network failures.
 - In-memory caches inside the function do not survive cold starts. Treat
   them as best-effort only.
 - The `master` branch auto-deploys. Preview deployments are created for

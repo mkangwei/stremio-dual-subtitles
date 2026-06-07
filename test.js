@@ -9,6 +9,8 @@ const assert = require('assert');
 
 const {
   _test: {
+    isRetryableFetchError,
+    fetchWithRetry,
     parseTimeToMs,
     parseSrt,
     parseSrtSimple,
@@ -47,6 +49,32 @@ function test(name, fn) {
 // parseTimeToMs
 // ============================================================================
 console.log('\n--- parseTimeToMs ---');
+
+// ============================================================================
+// fetch retry classification
+// ============================================================================
+console.log('\n--- fetch retry classification ---');
+
+test('Timeout error is retryable', () => {
+  assert.strictEqual(
+    isRetryableFetchError({ code: 'ECONNABORTED', message: 'timeout of 15000ms exceeded' }),
+    true
+  );
+});
+
+test('HTTP 503 is retryable', () => {
+  assert.strictEqual(
+    isRetryableFetchError({ response: { status: 503 }, message: 'service unavailable' }),
+    true
+  );
+});
+
+test('HTTP 404 is not retryable', () => {
+  assert.strictEqual(
+    isRetryableFetchError({ response: { status: 404 }, message: 'not found' }),
+    false
+  );
+});
 
 test('SRT comma format: 00:01:23,456 = 83456', () => {
   assert.strictEqual(parseTimeToMs('00:01:23,456'), 83456);

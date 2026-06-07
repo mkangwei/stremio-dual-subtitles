@@ -165,6 +165,16 @@ const QUALITY_GATE_THRESHOLD = 0.85;
 // is enough to cover (best same-group, zipped-popularity, runner-up)
 // while keeping the serverless cold path bounded.
 const MAX_PAIR_ATTEMPTS = 3;
+const SUBTITLE_LIST_TIMEOUT_MS = 25000;
+const SUBTITLE_FILE_TIMEOUT_MS = 20000;
+const RETRYABLE_STATUSES = new Set([429, 469, 503, 504]);
+const RETRYABLE_ERROR_CODES = new Set([
+  'ECONNABORTED',
+  'ECONNRESET',
+  'ENETUNREACH',
+  'EAI_AGAIN',
+  'ETIMEDOUT'
+]);
 
 // Configuration
 const ADDON_NAME = process.env.ADDON_NAME || 'Dual Subtitles';
@@ -213,12 +223,21 @@ const manifest = {
 
 const builder = new addonBuilder(manifest);
 
+function isRetryableFetchError(error) {
+  const status = error && error.response ? error.response.status : null;
+  if (RETRYABLE_STATUSES.has(status)) return true;
+
+  const code = error && error.code ? String(error.code).toUpperCase() : '';
+  if (RETRYABLE_ERROR_CODES.has(code)) return true;
+
+  return Boolean(error && /timeout/i.test(String(error.message || '')));
+}
+
 async function fetchWithRetry(url, options = {}, retries = 2, backoffMs = 500) {
   try {
     return await axios.get(url, options);
   } catch (error) {
-    const status = error && error.response ? error.response.status : null;
-    if (retries > 0 && (status === 429 || status === 469 || status === 503 || status === 504)) {
+    if (retries > 0 && isRetryableFetchError(error)) {
       await new Promise(resolve => setTimeout(resolve, backoffMs));
       return fetchWithRetry(url, options, retries - 1, backoffMs * 2);
     }
@@ -252,7 +271,7 @@ async function fetchAllSubtitles(imdbId, type, season = null, episode = null, vi
   apiUrl += '.json';
 
   try {
-    const response = await fetchWithRetry(apiUrl, { timeout: 15000 });
+    const response = await fetchWithRetry(apiUrl, { timeout: SUBTITLE_LIST_TIMEOUT_MS });
     
     if (!response.data || !response.data.subtitles || response.data.subtitles.length === 0) {
       return null;
@@ -295,7 +314,7 @@ async function fetchSubtitleContent(url, languageCode = null) {
   try {
     const response = await fetchWithRetry(url, {
       responseType: 'arraybuffer',
-      timeout: 15000,
+      timeout: SUBTITLE_FILE_TIMEOUT_MS,
       maxContentLength: 5 * 1024 * 1024 // 5MB limit
     });
 
@@ -978,6 +997,8 @@ module.exports = {
   generateDynamicSubtitle,
   // Exported for testing
   _test: {
+    isRetryableFetchError,
+    fetchWithRetry,
     parseTimeToMs,
     parseSrt,
     parseSrtSimple,
